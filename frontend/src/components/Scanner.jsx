@@ -30,7 +30,7 @@ function ScoreBar({ score }) {
 const RESCAN_INTERVAL  = 5 * 60 * 1000; // full rescan every 5 min
 const PRICE_INTERVAL   = 45 * 1000;     // price-only refresh every 45s
 
-export default function Scanner({ onAnalyze, onAlert }) {
+export default function Scanner({ onAnalyze, onAlert, onResultsChange }) {
   const [type, setType]             = useState('all');
   const [results, setResults]       = useState([]);
   const [livePrices, setLivePrices] = useState({});
@@ -98,6 +98,7 @@ export default function Scanner({ onAnalyze, onAlert }) {
 
       const incoming = res.data.results || [];
       setResults(incoming);
+      onResultsChange?.(incoming);  // notify parent
       setProgress({ done: res.data.scanned || incoming.length, total: res.data.total || 23 });
 
       incoming.forEach(r => {
@@ -145,78 +146,80 @@ export default function Scanner({ onAnalyze, onAlert }) {
   const watchCount = results.filter(r => r.action === 'SURVEILLER').length;
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="bg-card border border-border rounded-2xl p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-white font-bold text-lg">Scanner de marché</h2>
-              {scanning && <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />}
-            </div>
-            <p className="text-gray-500 text-sm">
-              {scanning
-                ? `Analyse en cours… ${progress.done}/${progress.total} symboles`
-                : lastScan
-                ? <>
-                    <span className="text-accent font-semibold">● LIVE</span>
-                    {' '}— Mis à jour {lastScan.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    {nextScanIn != null && ` — prochain scan dans ${Math.floor(nextScanIn / 60)}:${String(nextScanIn % 60).padStart(2, '0')}`}
-                  </>
-                : 'Scan des meilleures opportunités du jour'}
-            </p>
+    <div className="flex flex-col h-full">
+      {/* Header bar — matches analyze header style */}
+      <div className="shrink-0 border-b border-border px-5 py-3 flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-white font-bold">Scanner de marché</h2>
+            {scanning && <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />}
           </div>
-
-          <div className="flex bg-surface rounded-xl p-1 gap-1">
-            {Object.entries(TYPE_LABELS).map(([k, v]) => (
-              <button key={k} onClick={() => handleTypeChange(k)} disabled={scanning}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  type === k ? 'bg-accent text-black font-bold' : 'text-gray-400 hover:text-white'
-                }`}>{v}</button>
-            ))}
-          </div>
-
-          <button onClick={() => startScan()} disabled={scanning}
-            className="px-4 py-2 rounded-xl border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 text-sm font-semibold transition-all flex items-center gap-2">
-            <span className={scanning ? 'animate-spin' : ''}>↻</span>
-            {scanning ? 'Scan…' : 'Rescanner'}
-          </button>
+          <p className="text-gray-500 text-xs mt-0.5">
+            {scanning
+              ? `Analyse en cours… ${progress.done}/${progress.total} symboles`
+              : lastScan
+              ? <>
+                  <span className="text-accent font-semibold">● LIVE</span>
+                  {' '}— {lastScan.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  {nextScanIn != null && ` — prochain scan dans ${Math.floor(nextScanIn / 60)}:${String(nextScanIn % 60).padStart(2, '0')}`}
+                </>
+              : 'Scan des meilleures opportunités du jour'}
+          </p>
         </div>
 
-        {scanning && progress.total > 0 && (
-          <div className="mt-4">
-            <div className="h-1.5 bg-surface rounded-full overflow-hidden">
-              <div className="h-full bg-accent rounded-full transition-all duration-500"
-                style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-            </div>
-          </div>
-        )}
+        <div className="flex bg-surface rounded-xl p-1 gap-1 shrink-0">
+          {Object.entries(TYPE_LABELS).map(([k, v]) => (
+            <button key={k} onClick={() => handleTypeChange(k)} disabled={scanning}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                type === k ? 'bg-accent text-black font-bold' : 'text-gray-400 hover:text-white'
+              }`}>{v}</button>
+          ))}
+        </div>
 
-        {results.length > 0 && (
-          <div className="flex gap-3 mt-4 flex-wrap">
-            <button onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === 'all' ? 'bg-accent/20 text-accent' : 'text-gray-500 hover:text-gray-300'}`}>
-              Tous ({results.length})
-            </button>
-            <button onClick={() => setFilter('buy')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === 'buy' ? 'bg-accent/20 text-accent' : 'text-gray-500 hover:text-accent'}`}>
-              🚀 Achats ({buyCount})
-            </button>
-            <button onClick={() => setFilter('watch')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === 'watch' ? 'bg-hold/20 text-hold' : 'text-gray-500 hover:text-yellow-400'}`}>
-              👁 Surveiller ({watchCount})
-            </button>
-          </div>
-        )}
+        <button onClick={() => startScan()} disabled={scanning}
+          className="px-3 py-1.5 rounded-xl border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0">
+          <span className={scanning ? 'animate-spin inline-block' : ''}>↻</span>
+          {scanning ? 'Scan…' : 'Rescanner'}
+        </button>
       </div>
 
-      {filtered.length === 0 && !scanning && (
-        <div className="text-center py-16 text-gray-600">
-          {results.length > 0 ? 'Aucun résultat pour ce filtre.' : 'Démarrage du scan…'}
+      {/* Progress bar */}
+      {scanning && progress.total > 0 && (
+        <div className="shrink-0 px-0">
+          <div className="h-0.5 bg-surface">
+            <div className="h-full bg-accent transition-all duration-500"
+              style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+          </div>
         </div>
       )}
 
-      <div className="space-y-2">
+      {/* Filter pills */}
+      {results.length > 0 && (
+        <div className="shrink-0 border-b border-border px-5 py-2 flex items-center gap-2">
+          {[
+            { id: 'all',   label: `Tous (${results.length})` },
+            { id: 'buy',   label: `🚀 Achats (${buyCount})` },
+            { id: 'watch', label: `👁 Surveiller (${watchCount})` },
+          ].map(({ id, label }) => (
+            <button key={id} onClick={() => setFilter(id)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                filter === id
+                  ? id === 'watch' ? 'bg-hold/20 text-hold' : 'bg-accent/20 text-accent'
+                  : 'text-gray-600 hover:text-gray-300'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Results — scrollable */}
+      <div className="flex-1 overflow-y-auto">
+        {filtered.length === 0 && !scanning && (
+          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
+            {results.length > 0 ? 'Aucun résultat pour ce filtre.' : 'Démarrage du scan…'}
+          </div>
+        )}
         {filtered.map((item) => {
           const style = ACTION_STYLE[item.action] || ACTION_STYLE['ÉVITER'];
           const rank  = results.findIndex(r => r.symbol === item.symbol) + 1;

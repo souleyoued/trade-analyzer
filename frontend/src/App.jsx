@@ -73,6 +73,7 @@ import FavoritesPanel from './components/FavoritesPanel';
 import AlertToast from './components/AlertToast';
 import Scanner from './components/Scanner';
 import LeveragePanel from './components/LeveragePanel';
+import LeverageTradingTab from './components/LeverageTradingTab';
 
 const POPULAR = [
   { symbol: 'AAPL',    label: 'Apple' },
@@ -91,6 +92,7 @@ export default function App() {
   const [symbol, setSymbol]     = useState('');
   const [strategy, setStrategy] = useState('buffett');
   const [alerts, setAlerts]     = useState([]);
+  const [scannerResults, setScannerResults] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [refreshIn, setRefreshIn]     = useState(null);
   const autoRefreshRef = useRef(null);
@@ -164,6 +166,7 @@ export default function App() {
         <nav className="flex gap-1">
           {[
             { id: 'scanner', label: 'Scanner' },
+            { id: 'levier',  label: '⚡ Levier' },
             { id: 'analyze', label: 'Analyser' },
           ].map(({ id, label }) => (
             <button
@@ -191,12 +194,64 @@ export default function App() {
         </div>
       </header>
 
-      {/* Scanner tab */}
+      {/* Scanner tab — full height like analyze tab */}
       {tab === 'scanner' && (
-        <main className="flex-1 overflow-y-auto p-5 space-y-4">
-          <FavoritesPanel strategy={strategy} onAlert={handleAlert} onAnalyze={analyze} />
-          <Scanner onAnalyze={analyze} onAlert={handleAlert} />
-        </main>
+        <div className="flex-1 flex overflow-hidden">
+          {/* LEFT: Favorites panel */}
+          <aside className="w-[260px] shrink-0 border-r border-border overflow-y-auto">
+            <div className="px-4 pt-4 pb-2 border-b border-border">
+              <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Favoris & Alertes</span>
+            </div>
+            <FavoritesPanel strategy={strategy} onAlert={handleAlert} onAnalyze={analyze} />
+          </aside>
+          {/* CENTER: Scanner results — full height */}
+          <main className="flex-1 flex flex-col overflow-hidden">
+            <Scanner onAnalyze={analyze} onAlert={handleAlert} onResultsChange={setScannerResults} />
+          </main>
+          {/* RIGHT: Strategy selector */}
+          <aside className="w-[220px] shrink-0 border-l border-border overflow-y-auto">
+            <div className="px-4 pt-4 pb-2 border-b border-border">
+              <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Stratégie</span>
+            </div>
+            <div className="p-3">
+              <StrategySelector selected={strategy} onChange={handleStrategyChange} compact />
+            </div>
+            {/* Quick stats */}
+            {scannerResults.length > 0 && (
+              <div className="px-4 py-3 border-t border-border space-y-3">
+                <div className="text-xs text-gray-500 uppercase tracking-wider">Résumé du scan</div>
+                {[
+                  { label: 'Analysés', val: scannerResults.length, color: 'text-white' },
+                  { label: 'ACHAT FORT', val: scannerResults.filter(r => r.action === 'ACHAT FORT').length, color: 'text-accent' },
+                  { label: 'ACHAT', val: scannerResults.filter(r => r.action === 'ACHAT').length, color: 'text-accent' },
+                  { label: 'Surveiller', val: scannerResults.filter(r => r.action === 'SURVEILLER').length, color: 'text-hold' },
+                  { label: 'Éviter', val: scannerResults.filter(r => r.action === 'ÉVITER').length, color: 'text-gray-500' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="flex justify-between text-xs">
+                    <span className="text-gray-600">{label}</span>
+                    <span className={`font-bold font-mono ${color}`}>{val}</span>
+                  </div>
+                ))}
+                <div className="mt-2 pt-2 border-t border-border">
+                  <div className="text-xs text-gray-600 mb-1">Score moyen</div>
+                  <div className="text-accent font-bold font-mono text-lg">
+                    {Math.round(scannerResults.reduce((a, r) => a + r.score, 0) / scannerResults.length)}
+                    <span className="text-gray-600 text-xs font-normal">/100</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {/* Levier tab */}
+      {tab === 'levier' && (
+        <LeverageTradingTab
+          scannerResults={scannerResults}
+          onAnalyze={analyze}
+          onAlert={handleAlert}
+        />
       )}
 
       {/* Analyze tab — 3-column layout */}
