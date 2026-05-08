@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const STORAGE_KEY = 'trade_analyzer_favorites';
 const SIGNALS_KEY = 'trade_analyzer_fav_signals';
-const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
 
 function loadFavs()    { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; } }
 function saveFavs(f)   { localStorage.setItem(STORAGE_KEY, JSON.stringify(f)); }

@@ -27,15 +27,19 @@ function ScoreBar({ score }) {
   );
 }
 
+const RESCAN_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
 export default function Scanner({ onAnalyze, onAlert }) {
   const [type, setType]         = useState('all');
   const [results, setResults]   = useState([]);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [lastScan, setLastScan] = useState(null);
+  const [nextScanIn, setNextScanIn] = useState(null);
   const [filter, setFilter]     = useState('all'); // all | buy | watch
   const prevScores              = useRef({});
   const sourceRef               = useRef(null);
+  const rescanTimerRef          = useRef(null);
 
   // Animated fake progress ticks while waiting for the response
   useEffect(() => {
@@ -46,10 +50,22 @@ export default function Scanner({ onAnalyze, onAlert }) {
     return () => clearInterval(t);
   }, [scanning]);
 
+  // Countdown to next scan
+  useEffect(() => {
+    if (!lastScan || scanning) { setNextScanIn(null); return; }
+    const t = setInterval(() => {
+      const remaining = Math.max(0, RESCAN_INTERVAL - (Date.now() - lastScan.getTime()));
+      setNextScanIn(Math.ceil(remaining / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [lastScan, scanning]);
+
   const startScan = useCallback(async (scanType = type) => {
     if (sourceRef.current) sourceRef.current.cancelled = true;
     const ctrl = { cancelled: false };
     sourceRef.current = ctrl;
+
+    if (rescanTimerRef.current) clearTimeout(rescanTimerRef.current);
 
     setScanning(true);
     setResults([]);
@@ -90,7 +106,13 @@ export default function Scanner({ onAnalyze, onAlert }) {
     } catch (err) {
       if (!ctrl.cancelled) console.error('Scanner error:', err.message);
     } finally {
-      if (!ctrl.cancelled) { setScanning(false); setLastScan(new Date()); }
+      if (!ctrl.cancelled) {
+        setScanning(false);
+        const now = new Date();
+        setLastScan(now);
+        // Schedule next auto-scan
+        rescanTimerRef.current = setTimeout(() => startScan(scanType), RESCAN_INTERVAL);
+      }
     }
   }, [type, onAlert]);
 
@@ -125,7 +147,11 @@ export default function Scanner({ onAnalyze, onAlert }) {
               {scanning
                 ? `Analyse en cours… ${progress.done}/${progress.total} symboles`
                 : lastScan
-                ? `Dernier scan: ${lastScan.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — ${results.length} symboles analysés`
+                ? <>
+                    <span className="text-green-500 font-semibold">● LIVE</span>
+                    {' '}— Mis à jour {lastScan.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {nextScanIn != null && ` — prochain scan dans ${Math.floor(nextScanIn / 60)}:${String(nextScanIn % 60).padStart(2, '0')}`}
+                  </>
                 : 'Scan des meilleures opportunités du jour'}
             </p>
           </div>

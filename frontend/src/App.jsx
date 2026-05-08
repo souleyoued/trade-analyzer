@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SearchBar from './components/SearchBar';
 import AnalysisCard from './components/AnalysisCard';
@@ -27,30 +27,59 @@ export default function App() {
   const [symbol, setSymbol]     = useState('');
   const [strategy, setStrategy] = useState('buffett');
   const [alerts, setAlerts]     = useState([]);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [refreshIn, setRefreshIn]     = useState(null);
+  const autoRefreshRef = useRef(null);
+  const symbolRef      = useRef('');
+  const strategyRef    = useRef('buffett');
 
-  const analyze = useCallback(async (sym, strat) => {
-    const s = sym.trim().toUpperCase();
-    const st = strat || strategy;
+  const REFRESH_INTERVAL = 60 * 1000; // 60 seconds
+
+  const analyze = useCallback(async (sym, strat, silent = false) => {
+    const s = (sym || symbolRef.current).trim().toUpperCase();
+    const st = strat || strategyRef.current;
     if (!s) return;
-    setTab('analyze');
-    setLoading(true);
-    setError(null);
-    setData(null);
-    setSymbol(s);
+    if (!silent) {
+      setTab('analyze');
+      setLoading(true);
+      setError(null);
+      setData(null);
+      setSymbol(s);
+    }
+    symbolRef.current   = s;
+    strategyRef.current = st;
+    if (autoRefreshRef.current) clearTimeout(autoRefreshRef.current);
     try {
       const res = await axios.get(`/api/analyze/${s}?strategy=${st}`);
       setData(res.data);
+      setLastRefresh(new Date());
+      // Schedule next silent refresh
+      autoRefreshRef.current = setTimeout(() => analyze(s, st, true), REFRESH_INTERVAL);
     } catch (err) {
-      setError(err.response?.data?.error || 'Impossible de récupérer les données. Vérifiez le symbole.');
+      if (!silent) setError(err.response?.data?.error || 'Impossible de récupérer les données. Vérifiez le symbole.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [strategy]);
+  }, []);
+
+  // Countdown to next refresh
+  useEffect(() => {
+    if (!lastRefresh) { setRefreshIn(null); return; }
+    const t = setInterval(() => {
+      const remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefresh.getTime()));
+      setRefreshIn(Math.ceil(remaining / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [lastRefresh]);
+
+  // Cleanup on unmount
+  useEffect(() => () => { if (autoRefreshRef.current) clearTimeout(autoRefreshRef.current); }, []);
 
   // Re-analyze current symbol when strategy changes
   const handleStrategyChange = (newStrategy) => {
     setStrategy(newStrategy);
-    if (symbol) analyze(symbol, newStrategy);
+    strategyRef.current = newStrategy;
+    if (symbolRef.current) analyze(symbolRef.current, newStrategy);
   };
 
   const handleAlert = useCallback((alert) => {
@@ -99,7 +128,14 @@ export default function App() {
 
           <div className="flex items-center gap-2 shrink-0">
             <div className="w-2 h-2 rounded-full bg-buy animate-pulse" />
-            <span className="text-gray-400 text-xs hidden sm:block">Marché connecté</span>
+            {tab === 'analyze' && lastRefresh && refreshIn != null ? (
+              <span className="text-xs text-gray-400 hidden sm:block">
+                <span className="text-green-500 font-semibold">● LIVE</span>
+                {' '}— refresh dans {refreshIn}s
+              </span>
+            ) : (
+              <span className="text-gray-400 text-xs hidden sm:block">Marché connecté</span>
+            )}
           </div>
         </div>
       </header>
