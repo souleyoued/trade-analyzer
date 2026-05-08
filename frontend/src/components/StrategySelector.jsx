@@ -44,7 +44,35 @@ const COLOR_MAP = {
   purple: { border: 'border-purple-500',  bg: 'bg-purple-500/10', text: 'text-purple-400',  tag: 'bg-purple-500/20 text-purple-300'  },
 };
 
-export default function StrategySelector({ selected, onChange }) {
+export default function StrategySelector({ selected, onChange, compact = false }) {
+  if (compact) {
+    return (
+      <div>
+        <div className="text-xs text-gray-600 uppercase tracking-wider mb-2">Stratégie</div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {STRATEGIES.map(s => {
+            const isActive = selected === s.id;
+            const c = COLOR_MAP[s.color];
+            return (
+              <button
+                key={s.id}
+                onClick={() => onChange(s.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all border ${
+                  isActive
+                    ? `${c.border} ${c.bg} ${c.text}`
+                    : 'border-border text-gray-500 hover:border-gray-600 hover:text-gray-300'
+                }`}
+              >
+                <span>{s.emoji}</span>
+                <span className="truncate">{s.name.split(' ')[0]}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">

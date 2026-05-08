@@ -4,10 +4,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        surface: '#0f1117',
-        card:    '#1a1d27',
-        border:  '#2a2d3a',
-        accent:  '#6366f1',
+        surface: '#0a0a0a',
+        card:    '#111111',
+        card2:   '#161616',
+        border:  '#1e1e1e',
+        accent:  '#f97316',
         buy:     '#22c55e',
         sell:    '#ef4444',
         hold:    '#f59e0b'

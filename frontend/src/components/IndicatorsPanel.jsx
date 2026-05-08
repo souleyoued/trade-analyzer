@@ -1,44 +1,39 @@
 const SIGNAL_COLORS = {
-  ACHAT:       { bg: 'bg-buy/10',   text: 'text-buy',   border: 'border-buy/30'   },
-  'ACHAT FORT':{ bg: 'bg-buy/20',   text: 'text-buy',   border: 'border-buy'      },
-  VENTE:       { bg: 'bg-sell/10',  text: 'text-sell',  border: 'border-sell/30'  },
-  'VENTE FORTE':{ bg: 'bg-sell/20', text: 'text-sell',  border: 'border-sell'     },
-  HAUSSIER:    { bg: 'bg-buy/10',   text: 'text-buy',   border: 'border-buy/20'   },
-  POSITIF:     { bg: 'bg-buy/10',   text: 'text-buy',   border: 'border-buy/20'   },
-  BAISSIER:    { bg: 'bg-sell/10',  text: 'text-sell',  border: 'border-sell/20'  },
-  NÉGATIF:     { bg: 'bg-sell/10',  text: 'text-sell',  border: 'border-sell/20'  },
-  NEUTRE:      { bg: 'bg-gray-800', text: 'text-gray-400', border: 'border-gray-700' },
+  ACHAT:         { dot: 'bg-buy',   text: 'text-buy'  },
+  'ACHAT FORT':  { dot: 'bg-buy',   text: 'text-buy'  },
+  VENTE:         { dot: 'bg-sell',  text: 'text-sell' },
+  'VENTE FORTE': { dot: 'bg-sell',  text: 'text-sell' },
+  HAUSSIER:      { dot: 'bg-buy',   text: 'text-buy'  },
+  POSITIF:       { dot: 'bg-buy',   text: 'text-buy'  },
+  BAISSIER:      { dot: 'bg-sell',  text: 'text-sell' },
+  NÉGATIF:       { dot: 'bg-sell',  text: 'text-sell' },
+  NEUTRE:        { dot: 'bg-gray-600', text: 'text-gray-400' },
 };
 
-function RSIGauge({ value }) {
+function RSIArc({ value }) {
   const pct = Math.max(0, Math.min(100, value));
-  const color = value < 30 ? '#22c55e' : value > 70 ? '#ef4444' : '#6366f1';
-  const angle = (pct / 100) * 180 - 90;
+  const color = value < 30 ? '#22c55e' : value > 70 ? '#ef4444' : '#f97316';
+  const angle = (pct / 100) * 180;
+  const toRad = a => (a - 90) * Math.PI / 180;
+  const r = 40;
+  const cx = 50, cy = 50;
+  const startAngle = -180;
+  const endAngle = startAngle + angle;
+  const x1 = cx + r * Math.cos(toRad(startAngle));
+  const y1 = cy + r * Math.sin(toRad(startAngle));
+  const x2 = cx + r * Math.cos(toRad(endAngle));
+  const y2 = cy + r * Math.sin(toRad(endAngle));
+  const largeArc = angle > 180 ? 1 : 0;
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative w-24 h-12 overflow-hidden">
-        <svg viewBox="0 0 100 50" className="w-full">
-          <path d="M5 50 A45 45 0 0 1 95 50" fill="none" stroke="#2a2d3a" strokeWidth="8" strokeLinecap="round" />
-          <path
-            d="M5 50 A45 45 0 0 1 95 50"
-            fill="none"
-            stroke={color}
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeDasharray={`${pct * 1.41} 141`}
-          />
-          <line
-            x1="50" y1="50"
-            x2={50 + 35 * Math.cos((angle * Math.PI) / 180)}
-            y2={50 - 35 * Math.sin(((angle + 180) * Math.PI) / 180 - Math.PI)}
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-      <span className="text-xl font-bold" style={{ color }}>{value}</span>
-      <span className="text-gray-500 text-xs mt-0.5">
+    <div className="flex flex-col items-center py-2">
+      <svg width={100} height={55} viewBox="0 0 100 55">
+        <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="#1e1e1e" strokeWidth={8} strokeLinecap="round" />
+        {pct > 0 && (
+          <path d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`} fill="none" stroke={color} strokeWidth={8} strokeLinecap="round" />
+        )}
+        <text x={cx} y={cy + 2} textAnchor="middle" fill={color} fontSize={16} fontWeight="bold" fontFamily="monospace">{value}</text>
+      </svg>
+      <span className="text-xs" style={{ color }}>
         {value < 30 ? 'Survente' : value > 70 ? 'Surachat' : 'Neutre'}
       </span>
     </div>
@@ -49,80 +44,87 @@ export default function IndicatorsPanel({ indicators, signals }) {
   if (!indicators) return null;
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 h-full">
-      <h2 className="text-white font-bold text-base mb-4">Indicateurs techniques</h2>
+    <div className="flex flex-col gap-0 h-full overflow-y-auto">
+      <div className="px-4 pt-4 pb-2 border-b border-border">
+        <span className="text-xs text-gray-500 uppercase tracking-wider">Indicateurs</span>
+      </div>
 
       {/* RSI */}
-      <div className="bg-surface rounded-xl p-4 mb-3">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-gray-400 text-sm font-medium">RSI (14)</span>
+      <div className="px-4 py-3 border-b border-border">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-gray-500">RSI (14)</span>
+          <span className={`text-xs font-bold ${parseFloat(indicators.rsi) < 30 ? 'text-buy' : parseFloat(indicators.rsi) > 70 ? 'text-sell' : 'text-hold'}`}>
+            {parseFloat(indicators.rsi) < 30 ? 'SURVENTE' : parseFloat(indicators.rsi) > 70 ? 'SURACHAT' : 'NEUTRE'}
+          </span>
         </div>
-        <RSIGauge value={parseFloat(indicators.rsi)} />
+        <RSIArc value={parseFloat(indicators.rsi)} />
       </div>
 
       {/* MACD */}
       {indicators.macd && (
-        <div className="bg-surface rounded-xl p-4 mb-3">
-          <p className="text-gray-400 text-sm font-medium mb-2">MACD (12,26,9)</p>
+        <div className="px-4 py-3 border-b border-border">
+          <span className="text-xs text-gray-500 block mb-2">MACD (12,26,9)</span>
           <div className="space-y-1.5">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">MACD</span>
-              <span className={`font-mono font-bold ${indicators.macd.macd >= 0 ? 'text-buy' : 'text-sell'}`}>
-                {indicators.macd.macd}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Signal</span>
-              <span className="font-mono text-gray-300">{indicators.macd.signal}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Histogramme</span>
-              <span className={`font-mono font-bold ${indicators.macd.histogram >= 0 ? 'text-buy' : 'text-sell'}`}>
-                {indicators.macd.histogram}
-              </span>
-            </div>
+            {[
+              { label: 'MACD', val: indicators.macd.macd, colored: true },
+              { label: 'Signal', val: indicators.macd.signal, colored: false },
+              { label: 'Histogramme', val: indicators.macd.histogram, colored: true },
+            ].map(({ label, val, colored }) => (
+              <div key={label} className="flex justify-between text-xs">
+                <span className="text-gray-600">{label}</span>
+                <span className={`font-mono font-bold ${colored ? (Number(val) >= 0 ? 'text-buy' : 'text-sell') : 'text-gray-300'}`}>{val}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
       {/* Bollinger */}
-      <div className="bg-surface rounded-xl p-4 mb-3">
-        <p className="text-gray-400 text-sm font-medium mb-2">Bollinger Bands</p>
-        <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Haut</span>
-            <span className="text-sell font-mono">{indicators.bb.upper}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Milieu (SMA20)</span>
-            <span className="text-gray-300 font-mono">{indicators.bb.middle}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Bas</span>
-            <span className="text-buy font-mono">{indicators.bb.lower}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Position</span>
-            <span className="text-accent font-bold">{indicators.bb.position}%</span>
+      <div className="px-4 py-3 border-b border-border">
+        <span className="text-xs text-gray-500 block mb-2">Bollinger (20)</span>
+        <div className="space-y-1.5 text-xs">
+          {[
+            { label: 'Haut', val: indicators.bb.upper, cls: 'text-sell' },
+            { label: 'Milieu', val: indicators.bb.middle, cls: 'text-gray-300' },
+            { label: 'Bas', val: indicators.bb.lower, cls: 'text-buy' },
+          ].map(({ label, val, cls }) => (
+            <div key={label} className="flex justify-between">
+              <span className="text-gray-600">{label}</span>
+              <span className={`font-mono ${cls}`}>{val}</span>
+            </div>
+          ))}
+          <div className="mt-2">
+            <div className="flex justify-between mb-1">
+              <span className="text-gray-600">Position</span>
+              <span className="text-accent font-bold">{indicators.bb.position}%</span>
+            </div>
+            <div className="h-1 bg-black/50 rounded-full overflow-hidden">
+              <div className="h-full bg-accent rounded-full" style={{ width: `${indicators.bb.position}%` }} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Signals summary */}
-      <div className="space-y-2">
-        <p className="text-gray-400 text-sm font-medium">Signaux</p>
-        {signals.map((s, i) => {
-          const cfg = SIGNAL_COLORS[s.signal] || SIGNAL_COLORS.NEUTRE;
-          return (
-            <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${cfg.bg} ${cfg.border}`}>
-              <div>
-                <span className="text-gray-300 text-xs font-medium">{s.indicator}</span>
-                <p className="text-gray-500 text-xs">{s.reason}</p>
+      {/* Signals */}
+      <div className="px-4 py-3">
+        <span className="text-xs text-gray-500 uppercase tracking-wider block mb-2">Signaux</span>
+        <div className="space-y-2">
+          {signals.map((s, i) => {
+            const cfg = SIGNAL_COLORS[s.signal] || SIGNAL_COLORS.NEUTRE;
+            return (
+              <div key={i} className="flex items-start gap-2">
+                <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${cfg.dot}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-gray-400 text-xs font-medium truncate">{s.indicator}</span>
+                    <span className={`text-xs font-bold shrink-0 ${cfg.text}`}>{s.signal}</span>
+                  </div>
+                  <p className="text-gray-600 text-xs leading-snug">{s.reason}</p>
+                </div>
               </div>
-              <span className={`text-xs font-bold ${cfg.text}`}>{s.signal}</span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
