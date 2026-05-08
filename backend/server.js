@@ -897,6 +897,38 @@ app.get('/api/scanner', async (req, res) => {
   res.json({ results: results.slice(0, 20), total: list.length, scanned: results.length });
 });
 
+// Intraday chart endpoint — returns OHLCV candles for given interval/range
+app.get('/api/chart/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const { interval = '5m', range = '2d' } = req.query;
+  try {
+    const result = await fetchChart(symbol, range, interval);
+    const quotes  = parseQuotes(result);
+    if (!quotes.length) return res.status(404).json({ error: 'No data' });
+
+    const closes   = quotes.map(q => q.close);
+    const sma20raw = sma(closes, 20);
+    const sma50raw = sma(closes, 50);
+
+    const isIntraday = !['1d', '5d', '1wk', '1mo'].includes(interval);
+    const data = quotes.map((q, i) => ({
+      date:   isIntraday
+        ? q.date.toLocaleString('fr-FR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : q.date.toISOString().split('T')[0],
+      open:   parseFloat((q.open  || q.close).toFixed(6)),
+      high:   parseFloat(q.high.toFixed(6)),
+      low:    parseFloat(q.low.toFixed(6)),
+      close:  parseFloat(q.close.toFixed(6)),
+      volume: q.volume,
+      sma20:  i >= 19 ? parseFloat(sma20raw[i - 19].toFixed(6)) : null,
+      sma50:  i >= 49 ? parseFloat(sma50raw[i - 49].toFixed(6)) : null,
+    }));
+    res.json({ symbol, interval, range, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Lightweight batch price endpoint — polls current price for up to 25 symbols
 app.get('/api/prices', async (req, res) => {
   const symbols = (req.query.symbols || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 25);
