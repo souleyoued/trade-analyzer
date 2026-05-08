@@ -1,6 +1,69 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SearchBar from './components/SearchBar';
+
+function InlineSearch({ onAnalyze, loading }) {
+  const [input, setInput]       = useState('');
+  const [suggs, setSuggs]       = useState([]);
+  const [open, setOpen]         = useState(false);
+  const debounce                = useRef(null);
+  const inputRef                = useRef(null);
+
+  useEffect(() => {
+    if (input.length < 2) { setSuggs([]); return; }
+    clearTimeout(debounce.current);
+    debounce.current = setTimeout(async () => {
+      try {
+        const res = await axios.get(`/api/search/${input}`);
+        setSuggs(res.data.slice(0, 6));
+        setOpen(true);
+      } catch { setSuggs([]); }
+    }, 300);
+  }, [input]);
+
+  const submit = (sym) => {
+    setOpen(false);
+    setInput('');
+    onAnalyze(sym);
+  };
+
+  return (
+    <div className="relative flex-1 max-w-xs">
+      <div className="flex items-center bg-card2 border border-border rounded-lg px-3 gap-2 focus-within:border-accent transition-colors">
+        <span className="text-gray-600 text-sm">🔎</span>
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value.toUpperCase())}
+          onKeyDown={e => e.key === 'Enter' && input && submit(input)}
+          onFocus={() => suggs.length > 0 && setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
+          placeholder="Changer d'actif…"
+          className="bg-transparent py-2 text-sm text-white placeholder-gray-600 focus:outline-none w-full"
+        />
+        {loading && <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin shrink-0" />}
+      </div>
+
+      {open && suggs.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl overflow-hidden z-50 shadow-2xl">
+          {suggs.map(s => (
+            <button key={s.symbol} onMouseDown={() => submit(s.symbol)}
+              className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-border transition-colors text-left">
+              <div>
+                <span className="text-white font-mono font-semibold text-sm">{s.symbol}</span>
+                <span className="text-gray-500 text-xs ml-2">{s.name}</span>
+              </div>
+              <span className="text-gray-600 text-xs bg-surface px-1.5 py-0.5 rounded shrink-0">
+                {s.type === 'CRYPTOCURRENCY' ? 'CRYPTO' : s.exchange}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 import AnalysisCard from './components/AnalysisCard';
 import PriceChart from './components/PriceChart';
 import IndicatorsPanel from './components/IndicatorsPanel';
@@ -181,6 +244,9 @@ export default function App() {
                       <span className="text-gray-600 text-xs">{data.currency}</span>
                     </div>
                   </div>
+
+                  {/* Inline symbol search — always visible */}
+                  <InlineSearch onAnalyze={analyze} loading={loading} />
 
                   <div className="flex gap-4 ml-auto">
                     <div className="text-right">
