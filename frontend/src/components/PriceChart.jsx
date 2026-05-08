@@ -72,7 +72,7 @@ export default function PriceChart({ chartData, entryPrice, targetPrice, stopLos
         <span className="text-gray-400">H <span className="text-buy">{fmtPrice(hovItem.high)}</span></span>
         <span className="text-gray-400">L <span className="text-sell">{fmtPrice(hovItem.low)}</span></span>
         <span className="text-gray-400">C <span className="text-white font-bold">{fmtPrice(hovItem.close)}</span></span>
-        <span className={hovItem.close >= hovItem.open ? 'text-buy' : 'text-sell'}>
+        <span className={hovItem.close >= hovItem.open ? 'text-accent' : 'text-sell'}>
           {hovItem.close >= hovItem.open ? '+' : ''}{(((hovItem.close - hovItem.open) / hovItem.open) * 100).toFixed(2)}%
         </span>
 
@@ -140,7 +140,7 @@ export default function PriceChart({ chartData, entryPrice, targetPrice, stopLos
           {/* Candles */}
           {visible.map((d, i) => {
             const up = d.close >= d.open;
-            const col = up ? '#22c55e' : '#ef4444';
+            const col = up ? '#f97316' : '#ef4444';
             const cx = xScale(i);
             const bTop = yScale(Math.max(d.open, d.close));
             const bBot = yScale(Math.min(d.open, d.close));
@@ -175,7 +175,7 @@ export default function PriceChart({ chartData, entryPrice, targetPrice, stopLos
           )}
 
           {/* Current price label on right axis */}
-          <rect x={PAD.l + cw + 2} y={yScale(last.close) - 9} width={64} height={16} fill={isUp ? '#22c55e' : '#ef4444'} rx={2} />
+          <rect x={PAD.l + cw + 2} y={yScale(last.close) - 9} width={64} height={16} fill={isUp ? '#f97316' : '#ef4444'} rx={2} />
           <text x={PAD.l + cw + 34} y={yScale(last.close) + 4} fill="black" fontSize={9.5} fontFamily="monospace" textAnchor="middle" fontWeight="bold">
             {fmtPrice(last.close)}
           </text>

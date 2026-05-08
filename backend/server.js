@@ -897,6 +897,27 @@ app.get('/api/scanner', async (req, res) => {
   res.json({ results: results.slice(0, 20), total: list.length, scanned: results.length });
 });
 
+// Lightweight batch price endpoint — polls current price for up to 25 symbols
+app.get('/api/prices', async (req, res) => {
+  const symbols = (req.query.symbols || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 25);
+  if (!symbols.length) return res.json({});
+  const out = {};
+  await Promise.allSettled(symbols.map(async sym => {
+    try {
+      const r = await fetchChart(sym, '5d', '1d');
+      const meta = r.meta;
+      const prev = meta.chartPreviousClose || meta.previousClose || 0;
+      if (meta?.regularMarketPrice && prev) {
+        out[sym] = {
+          price:     meta.regularMarketPrice,
+          change24h: (((meta.regularMarketPrice - prev) / prev) * 100).toFixed(2),
+        };
+      }
+    } catch {}
+  }));
+  res.json(out);
+});
+
 // Export app for Vercel serverless
 export default app;
 

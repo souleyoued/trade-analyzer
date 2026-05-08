@@ -1,10 +1,10 @@
 const SIGNAL_COLORS = {
-  ACHAT:         { dot: 'bg-buy',   text: 'text-buy'  },
-  'ACHAT FORT':  { dot: 'bg-buy',   text: 'text-buy'  },
+  ACHAT:         { dot: 'bg-accent',   text: 'text-accent'  },
+  'ACHAT FORT':  { dot: 'bg-accent',   text: 'text-accent'  },
   VENTE:         { dot: 'bg-sell',  text: 'text-sell' },
   'VENTE FORTE': { dot: 'bg-sell',  text: 'text-sell' },
-  HAUSSIER:      { dot: 'bg-buy',   text: 'text-buy'  },
-  POSITIF:       { dot: 'bg-buy',   text: 'text-buy'  },
+  HAUSSIER:      { dot: 'bg-accent',   text: 'text-accent'  },
+  POSITIF:       { dot: 'bg-accent',   text: 'text-accent'  },
   BAISSIER:      { dot: 'bg-sell',  text: 'text-sell' },
   NÉGATIF:       { dot: 'bg-sell',  text: 'text-sell' },
   NEUTRE:        { dot: 'bg-gray-600', text: 'text-gray-400' },
@@ -53,7 +53,7 @@ export default function IndicatorsPanel({ indicators, signals }) {
       <div className="px-4 py-3 border-b border-border">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs text-gray-500">RSI (14)</span>
-          <span className={`text-xs font-bold ${parseFloat(indicators.rsi) < 30 ? 'text-buy' : parseFloat(indicators.rsi) > 70 ? 'text-sell' : 'text-hold'}`}>
+          <span className={`text-xs font-bold ${parseFloat(indicators.rsi) < 30 ? 'text-accent' : parseFloat(indicators.rsi) > 70 ? 'text-sell' : 'text-hold'}`}>
             {parseFloat(indicators.rsi) < 30 ? 'SURVENTE' : parseFloat(indicators.rsi) > 70 ? 'SURACHAT' : 'NEUTRE'}
           </span>
         </div>
@@ -72,7 +72,7 @@ export default function IndicatorsPanel({ indicators, signals }) {
             ].map(({ label, val, colored }) => (
               <div key={label} className="flex justify-between text-xs">
                 <span className="text-gray-600">{label}</span>
-                <span className={`font-mono font-bold ${colored ? (Number(val) >= 0 ? 'text-buy' : 'text-sell') : 'text-gray-300'}`}>{val}</span>
+                <span className={`font-mono font-bold ${colored ? (Number(val) >= 0 ? 'text-accent' : 'text-sell') : 'text-gray-300'}`}>{val}</span>
               </div>
             ))}
           </div>
@@ -86,7 +86,7 @@ export default function IndicatorsPanel({ indicators, signals }) {
           {[
             { label: 'Haut', val: indicators.bb.upper, cls: 'text-sell' },
             { label: 'Milieu', val: indicators.bb.middle, cls: 'text-gray-300' },
-            { label: 'Bas', val: indicators.bb.lower, cls: 'text-buy' },
+            { label: 'Bas', val: indicators.bb.lower, cls: 'text-accent' },
           ].map(({ label, val, cls }) => (
             <div key={label} className="flex justify-between">
               <span className="text-gray-600">{label}</span>
