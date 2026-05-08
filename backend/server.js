@@ -859,4 +859,48 @@ function parseQuotes(result) {
     .filter(q => q.close != null);
 }
 
-app.listen(3001, () => console.log('🚀 Trade Analyzer backend — http://localhost:3001'));
+// ── Non-SSE scanner for Vercel (parallel batch, 9s timeout) ──────────────────
+
+app.get('/api/scanner', async (req, res) => {
+  const { type = 'all' } = req.query;
+  const list = type === 'crypto'  ? WATCHLIST.crypto
+             : type === 'stocks'  ? WATCHLIST.stocks
+             : [...WATCHLIST.stocks, ...WATCHLIST.crypto];
+
+  const BATCH = 4;
+  const DEADLINE = Date.now() + 9000; // hard 9s deadline for Vercel
+  const results = [];
+
+  for (let i = 0; i < list.length; i += BATCH) {
+    if (Date.now() >= DEADLINE) break;
+    const batch = list.slice(i, i + BATCH);
+    const settled = await Promise.allSettled(
+      batch.map(async (item) => {
+        const r = await fetchChart(item.symbol, '6mo', '1d');
+        const q = parseQuotes(r);
+        if (q.length < 30) return null;
+        return {
+          symbol: item.symbol,
+          name:   item.name,
+          type:   WATCHLIST.crypto.some(c => c.symbol === item.symbol) ? 'crypto' : 'stock',
+          ...scoreDayTrade(q, r.meta),
+        };
+      })
+    );
+    settled.forEach(s => { if (s.status === 'fulfilled' && s.value) results.push(s.value); });
+    if (Date.now() < DEADLINE - 600 && i + BATCH < list.length) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  res.json({ results: results.slice(0, 20), total: list.length, scanned: results.length });
+});
+
+// Export app for Vercel serverless
+export default app;
+
+// Local dev server
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(3001, () => console.log('🚀 Trade Analyzer backend — http://localhost:3001'));
+}

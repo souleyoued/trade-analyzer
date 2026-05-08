@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import axios from 'axios';
 
 const TYPE_LABELS = { all: 'Tout', stocks: 'Actions', crypto: 'Cryptos' };
 
@@ -36,64 +37,61 @@ export default function Scanner({ onAnalyze, onAlert }) {
   const prevScores              = useRef({});
   const sourceRef               = useRef(null);
 
-  const startScan = useCallback((scanType = type) => {
-    if (sourceRef.current) sourceRef.current.close();
+  // Animated fake progress ticks while waiting for the response
+  useEffect(() => {
+    if (!scanning) return;
+    const t = setInterval(() => {
+      setProgress(p => ({ ...p, done: Math.min(p.done + 1, p.total - 2) }));
+    }, 600);
+    return () => clearInterval(t);
+  }, [scanning]);
+
+  const startScan = useCallback(async (scanType = type) => {
+    if (sourceRef.current) sourceRef.current.cancelled = true;
+    const ctrl = { cancelled: false };
+    sourceRef.current = ctrl;
 
     setScanning(true);
     setResults([]);
-    setProgress({ done: 0, total: 0 });
+    setProgress({ done: 0, total: 23 });
 
-    // Connect directly to backend — Vite proxy buffers SSE and breaks streaming
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-    const source = new EventSource(`${backendUrl}/api/scanner/stream?type=${scanType}`);
-    sourceRef.current = source;
+    try {
+      const res = await axios.get(`/api/scanner?type=${scanType}`, { timeout: 30000 });
+      if (ctrl.cancelled) return;
 
-    source.onmessage = (e) => {
-      const data = JSON.parse(e.data);
+      const incoming = res.data.results || [];
+      setResults(incoming);
+      setProgress({ done: res.data.scanned || incoming.length, total: res.data.total || 23 });
 
-      if (data.type === 'start') {
-        setProgress({ done: 0, total: data.total });
-      } else if (data.type === 'update' || data.type === 'done') {
-        setResults(data.results || []);
-        setProgress({ done: data.done, total: data.total });
-
-        // Fire alert if a new ACHAT FORT appears
-        if (data.results) {
-          data.results.forEach(r => {
-            const prev = prevScores.current[r.symbol];
-            if (r.action === 'ACHAT FORT' && (!prev || prev.action !== 'ACHAT FORT')) {
-              onAlert?.({
-                id:             `scanner-${r.symbol}-${Date.now()}`,
-                symbol:         r.symbol,
-                name:           r.name,
-                recommendation: r.action,
-                timing:         `Score ${r.score}/100 — Gain estimé +${r.expectedGainPct}%`,
-                action:         'BUY',
-                currentPrice:   r.currentPrice,
-                change24h:      r.change24h,
-                currency:       r.currency,
-                strategy:       { emoji: '🔍', name: 'Scanner du jour' },
-              });
-              // Browser notification
-              if (Notification.permission === 'granted') {
-                new Notification(`🚀 Opportunité : ${r.symbol}`, {
-                  body: `Score ${r.score}/100 — ${r.reasons?.[0] || ''}\nPrix: ${r.currency} ${fmt(r.currentPrice)}`
-                });
-              }
-            }
-            prevScores.current[r.symbol] = r;
+      // Fire alerts for new ACHAT FORT signals
+      incoming.forEach(r => {
+        const prev = prevScores.current[r.symbol];
+        if (r.action === 'ACHAT FORT' && (!prev || prev.action !== 'ACHAT FORT')) {
+          onAlert?.({
+            id:             `scanner-${r.symbol}-${Date.now()}`,
+            symbol:         r.symbol,
+            name:           r.name,
+            recommendation: r.action,
+            timing:         `Score ${r.score}/100 — Gain estimé +${r.expectedGainPct}%`,
+            action:         'BUY',
+            currentPrice:   r.currentPrice,
+            change24h:      r.change24h,
+            currency:       r.currency,
+            strategy:       { emoji: '🔍', name: 'Scanner du jour' },
           });
+          if (Notification.permission === 'granted') {
+            new Notification(`🚀 Opportunité : ${r.symbol}`, {
+              body: `Score ${r.score}/100 — ${r.reasons?.[0] || ''}\nPrix: ${r.currency} ${fmt(r.currentPrice)}`
+            });
+          }
         }
-
-        if (data.type === 'done') {
-          setScanning(false);
-          setLastScan(new Date());
-          source.close();
-        }
-      }
-    };
-
-    source.onerror = () => { setScanning(false); source.close(); };
+        prevScores.current[r.symbol] = r;
+      });
+    } catch (err) {
+      if (!ctrl.cancelled) console.error('Scanner error:', err.message);
+    } finally {
+      if (!ctrl.cancelled) { setScanning(false); setLastScan(new Date()); }
+    }
   }, [type, onAlert]);
 
   // Auto-scan on mount
