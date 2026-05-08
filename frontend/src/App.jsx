@@ -72,6 +72,7 @@ import StrategySelector from './components/StrategySelector';
 import FavoritesPanel from './components/FavoritesPanel';
 import AlertToast from './components/AlertToast';
 import Scanner from './components/Scanner';
+import LeveragePanel from './components/LeveragePanel';
 
 const POPULAR = [
   { symbol: 'AAPL',    label: 'Apple' },
@@ -205,9 +206,12 @@ export default function App() {
           {/* LEFT: Trade panel */}
           <aside className="w-[260px] shrink-0 border-r border-border overflow-y-auto">
             {data && !loading ? (
-              <AnalysisCard data={data} onAddTrade={(trade) => {
-                window.dispatchEvent(new CustomEvent('addTrade', { detail: trade }));
-              }} />
+              <>
+                <AnalysisCard data={data} onAddTrade={(trade) => {
+                  window.dispatchEvent(new CustomEvent('addTrade', { detail: trade }));
+                }} />
+                <LeveragePanel data={data} />
+              </>
             ) : (
               <div className="p-4 space-y-4">
                 <StrategySelector selected={strategy} onChange={handleStrategyChange} compact />
@@ -217,6 +221,7 @@ export default function App() {
                 </div>
               </div>
             )}
+
           </aside>
 
           {/* CENTER: Chart */}
