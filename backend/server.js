@@ -934,6 +934,165 @@ app.get('/api/daily-picks', async (req, res) => {
   res.json({ picks, total: results.length, market: getMarketStatus(), generatedAt: new Date().toISOString() });
 });
 
+// ── Intraday Scan ─────────────────────────────────────────────────────────────
+
+const INTRADAY_WATCHLIST = [
+  { symbol: 'TSLA',    name: 'Tesla',         type: 'stock'  },
+  { symbol: 'NVDA',    name: 'Nvidia',        type: 'stock'  },
+  { symbol: 'AMD',     name: 'AMD',           type: 'stock'  },
+  { symbol: 'MSTR',    name: 'MicroStrategy', type: 'stock'  },
+  { symbol: 'COIN',    name: 'Coinbase',      type: 'stock'  },
+  { symbol: 'PLTR',    name: 'Palantir',      type: 'stock'  },
+  { symbol: 'META',    name: 'Meta',          type: 'stock'  },
+  { symbol: 'HOOD',    name: 'Robinhood',     type: 'stock'  },
+  { symbol: 'TQQQ',    name: 'Nasdaq 3x',     type: 'etf'    },
+  { symbol: 'SOXL',    name: 'Semi 3x',       type: 'etf'    },
+  { symbol: 'BTC-USD', name: 'Bitcoin',       type: 'crypto' },
+  { symbol: 'ETH-USD', name: 'Ethereum',      type: 'crypto' },
+  { symbol: 'SOL-USD', name: 'Solana',        type: 'crypto' },
+  { symbol: 'XRP-USD', name: 'XRP',           type: 'crypto' },
+  { symbol: 'DOGE-USD',name: 'Dogecoin',      type: 'micro'  },
+  { symbol: 'ADA-USD', name: 'Cardano',       type: 'micro'  },
+];
+
+function detectIntradaySignal(candles, asset) {
+  if (candles.length < 30) return null;
+
+  // Only fire on data from the last 15 minutes
+  const lastCandle = candles[candles.length - 1];
+  if (Date.now() - lastCandle.time > 15 * 60 * 1000) return null;
+
+  const closes  = candles.map(c => c.close);
+  const highs   = candles.map(c => c.high);
+  const lows    = candles.map(c => c.low);
+  const volumes = candles.map(c => c.volume);
+
+  const n = closes.length - 1;
+  if (n < 2) return null;
+
+  const rsiArr = rsi(closes, 14);
+  if (rsiArr.length < 2) return null;
+  const curRSI  = rsiArr[rsiArr.length - 1];
+  const prevRSI = rsiArr[rsiArr.length - 2];
+
+  const macdData = macd(closes);
+  const bbArr    = bollingerBands(closes, 20);
+  if (!bbArr.length) return null;
+  const curBB = bbArr[bbArr.length - 1];
+
+  const avgVol   = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const volSurge = volumes[n] > avgVol * 1.5;
+  const candleUp = closes[n] > closes[n - 1];
+
+  const buyReasons  = [];
+  const sellReasons = [];
+
+  // Entry (BUY) conditions
+  if (prevRSI < 33 && curRSI >= 33)
+    buyReasons.push(`RSI sort de survente (${curRSI.toFixed(0)})`);
+  if (macdData) {
+    const ml = macdData.macdLine, sl = macdData.signalLine;
+    const len = ml.length;
+    if (len >= 2 && ml[len - 2] < sl[len - 2] && ml[len - 1] >= sl[len - 1])
+      buyReasons.push('Croisement MACD haussier');
+  }
+  if (closes[n] <= curBB.lower * 1.01 && candleUp)
+    buyReasons.push('Rebond sur Bollinger bas');
+  if (volSurge && candleUp)
+    buyReasons.push(`Volume x${(volumes[n] / avgVol).toFixed(1)} — pression acheteuse`);
+
+  // Exit (SELL) conditions
+  if (prevRSI > 67 && curRSI <= 67)
+    sellReasons.push(`RSI sort de surachat (${curRSI.toFixed(0)})`);
+  if (macdData) {
+    const ml = macdData.macdLine, sl = macdData.signalLine;
+    const len = ml.length;
+    if (len >= 2 && ml[len - 2] > sl[len - 2] && ml[len - 1] <= sl[len - 1])
+      sellReasons.push('Croisement MACD baissier');
+  }
+  if (closes[n] >= curBB.upper * 0.99 && !candleUp)
+    sellReasons.push('Rejet sur Bollinger haut');
+  if (volSurge && !candleUp)
+    sellReasons.push(`Volume x${(volumes[n] / avgVol).toFixed(1)} — pression vendeuse`);
+
+  const isBuy  = buyReasons.length >= 2 ||
+    (buyReasons.length === 1 && (buyReasons[0].includes('MACD') || buyReasons[0].includes('Volume')));
+  const isSell = sellReasons.length >= 2 ||
+    (sellReasons.length === 1 && (sellReasons[0].includes('MACD') || sellReasons[0].includes('Volume')));
+
+  if (!isBuy && !isSell) return null;
+
+  const action  = isBuy ? 'BUY' : 'SELL';
+  const reasons = isBuy ? buyReasons : sellReasons;
+
+  const curATR = atrValue(highs, lows, closes, 14);
+  const atrPct = curATR / closes[n] * 100;
+  const tpPct  = Math.min(Math.max(atrPct * 1.5, 2), 8);
+  const slPct  = Math.max(tpPct / 2.5, 1);
+  const price  = closes[n];
+
+  return {
+    symbol:       asset.symbol,
+    name:         asset.name,
+    type:         asset.type,
+    action,
+    currentPrice: price,
+    entryPrice:   price,
+    targetPrice:  action === 'BUY' ? price * (1 + tpPct / 100) : price * (1 - tpPct / 100),
+    stopLoss:     action === 'BUY' ? price * (1 - slPct / 100) : price * (1 + slPct / 100),
+    tpPct:        tpPct.toFixed(1),
+    slPct:        slPct.toFixed(1),
+    leverage:     Math.max(1, Math.ceil(25 / tpPct)),
+    rsi:          curRSI.toFixed(1),
+    atrPct:       atrPct.toFixed(2),
+    change5m:     ((closes[n] - closes[n - 1]) / closes[n - 1] * 100).toFixed(2),
+    reasons,
+    strength:     reasons.length + (volSurge ? 1 : 0),
+    timestamp:    new Date().toISOString(),
+    candleTime:   lastCandle.time,
+  };
+}
+
+app.get('/api/intraday-scan', async (req, res) => {
+  const market     = getMarketStatus();
+  const cryptoOnly = !market.isOpen && !market.isPreMkt;
+  const watchlist  = cryptoOnly
+    ? INTRADAY_WATCHLIST.filter(a => a.type === 'crypto' || a.type === 'micro')
+    : INTRADAY_WATCHLIST;
+
+  try {
+    const deadline = Date.now() + 22_000;
+    const settled  = await Promise.allSettled(
+      watchlist.map(async (asset) => {
+        if (Date.now() > deadline) return null;
+        try {
+          const result  = await fetchChart(asset.symbol, '2d', '5m');
+          const candles = parseQuotes(result).map(q => ({
+            time:   q.date.getTime(),
+            open:   q.open,
+            high:   q.high,
+            low:    q.low,
+            close:  q.close,
+            volume: q.volume || 0,
+          }));
+          return detectIntradaySignal(candles, asset);
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const signals = settled
+      .filter(r => r.status === 'fulfilled' && r.value)
+      .map(r => r.value)
+      .sort((a, b) => b.strength - a.strength);
+
+    res.json({ market, signals, total: watchlist.length, cryptoOnly, scannedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.get('/api/strategies', (req, res) => {

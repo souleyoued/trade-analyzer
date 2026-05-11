@@ -75,6 +75,7 @@ import Scanner from './components/Scanner';
 import LeveragePanel from './components/LeveragePanel';
 import LeverageTradingTab from './components/LeverageTradingTab';
 import DailyAIPicks from './components/DailyAIPicks';
+import IntradayAlerts from './components/IntradayAlerts';
 
 const POPULAR = [
   { symbol: 'AAPL',    label: 'Apple' },
@@ -93,6 +94,7 @@ export default function App() {
   const [symbol, setSymbol]     = useState('');
   const [strategy, setStrategy] = useState('buffett');
   const [alerts, setAlerts]     = useState([]);
+  const [intradayBadge, setIntradayBadge] = useState(0);
   const [scannerResults, setScannerResults] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [refreshIn, setRefreshIn]     = useState(null);
@@ -168,17 +170,23 @@ export default function App() {
           {[
             { id: 'scanner', label: 'Scanner' },
             { id: 'daily',   label: '🤖 Daily IA' },
+            { id: 'alertes', label: '🔔 Alertes', badge: intradayBadge },
             { id: 'levier',  label: '⚡ Levier' },
             { id: 'analyze', label: 'Analyser' },
-          ].map(({ id, label }) => (
+          ].map(({ id, label, badge }) => (
             <button
               key={id}
-              onClick={() => setTab(id)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              onClick={() => { setTab(id); if (id === 'alertes') setIntradayBadge(0); }}
+              className={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 tab === id ? 'bg-accent text-black font-bold' : 'text-gray-500 hover:text-white'
               }`}
             >
               {label}
+              {badge > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-sell text-white text-[9px] font-black flex items-center justify-center">
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -251,6 +259,16 @@ export default function App() {
       {tab === 'daily' && (
         <div className="flex-1 overflow-hidden">
           <DailyAIPicks onAnalyze={analyze} />
+        </div>
+      )}
+
+      {/* Alertes intraday tab */}
+      {tab === 'alertes' && (
+        <div className="flex-1 overflow-hidden">
+          <IntradayAlerts
+            onAnalyze={analyze}
+            onNewAlerts={(count) => setIntradayBadge(prev => prev + count)}
+          />
         </div>
       )}
 
