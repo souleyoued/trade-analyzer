@@ -74,6 +74,7 @@ import AlertToast from './components/AlertToast';
 import Scanner from './components/Scanner';
 import LeveragePanel from './components/LeveragePanel';
 import LeverageTradingTab from './components/LeverageTradingTab';
+import DailyAIPicks from './components/DailyAIPicks';
 
 const POPULAR = [
   { symbol: 'AAPL',    label: 'Apple' },
@@ -166,6 +167,7 @@ export default function App() {
         <nav className="flex gap-1">
           {[
             { id: 'scanner', label: 'Scanner' },
+            { id: 'daily',   label: '🤖 Daily IA' },
             { id: 'levier',  label: '⚡ Levier' },
             { id: 'analyze', label: 'Analyser' },
           ].map(({ id, label }) => (
@@ -242,6 +244,13 @@ export default function App() {
               </div>
             )}
           </aside>
+        </div>
+      )}
+
+      {/* Daily IA tab */}
+      {tab === 'daily' && (
+        <div className="flex-1 overflow-hidden">
+          <DailyAIPicks onAnalyze={analyze} />
         </div>
       )}
 
