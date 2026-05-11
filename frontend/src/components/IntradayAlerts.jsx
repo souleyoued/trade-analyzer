@@ -37,11 +37,14 @@ function MarketBadge({ market, cryptoOnly }) {
   return <span className="flex items-center gap-1.5 text-gray-500 text-xs font-bold"><span className="w-2 h-2 rounded-full bg-gray-600 inline-block" />APRÈS-BOURSE</span>;
 }
 
-function SignalCard({ signal, onAnalyze, isNew }) {
-  const up = signal.action === 'BUY';
+function SignalCard({ signal, onAnalyze, isNew, showAge }) {
+  const up      = signal.action === 'BUY';
   const timeStr = new Date(signal.timestamp).toLocaleTimeString('fr-FR', {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+  const ageMin  = Math.floor((Date.now() - new Date(signal.timestamp).getTime()) / 60000);
+  const ttlMin  = 30;
+  const remaining = ttlMin - ageMin;
 
   return (
     <div className={`rounded-xl border p-4 flex flex-col gap-3 transition-all ${
@@ -74,7 +77,14 @@ function SignalCard({ signal, onAnalyze, isNew }) {
         </div>
       </div>
 
-      <div className="text-gray-500 text-xs -mt-1">{signal.name} · {timeStr}</div>
+      <div className="flex items-center justify-between -mt-1">
+        <span className="text-gray-500 text-xs">{signal.name} · {timeStr}</span>
+        {showAge && (
+          <span className={`text-[10px] font-mono ${remaining <= 5 ? 'text-sell' : 'text-gray-600'}`}>
+            ⏱ expire dans {remaining}min
+          </span>
+        )}
+      </div>
 
       {/* Price targets */}
       <div className="grid grid-cols-3 gap-2">
@@ -136,6 +146,7 @@ function SignalCard({ signal, onAnalyze, isNew }) {
 }
 
 const SCAN_INTERVAL = 60;
+const HISTORY_TTL   = 30 * 60 * 1000; // purge signals older than 30 min
 
 export default function IntradayAlerts({ onAnalyze, onNewAlerts }) {
   const [data, setData]         = useState(null);
@@ -147,7 +158,19 @@ export default function IntradayAlerts({ onAnalyze, onNewAlerts }) {
   const seenRef  = useRef(new Set());
   const audioRef = useRef(null);
 
-  const sigId = (s) => `${s.symbol}-${s.candleTime}-${s.action}`;
+  const sigId   = (s) => `${s.symbol}-${s.candleTime}-${s.action}`;
+  const isStale = (s) => Date.now() - new Date(s.timestamp).getTime() > HISTORY_TTL;
+
+  const purgeHistory = useCallback(() => {
+    setHistory(prev => {
+      const fresh = prev.filter(s => !isStale(s));
+      // Also remove from seenRef so a renewed signal can re-trigger
+      if (fresh.length < prev.length) {
+        prev.filter(isStale).forEach(s => seenRef.current.delete(sigId(s)));
+      }
+      return fresh;
+    });
+  }, []);
 
   const playBeep = useCallback((buy) => {
     try {
@@ -169,6 +192,7 @@ export default function IntradayAlerts({ onAnalyze, onNewAlerts }) {
   }, []);
 
   const scan = useCallback(async () => {
+    purgeHistory();
     setLoading(true);
     setError(null);
     try {
@@ -212,7 +236,7 @@ export default function IntradayAlerts({ onAnalyze, onNewAlerts }) {
       setLoading(false);
       setCountdown(SCAN_INTERVAL);
     }
-  }, [playBeep, onNewAlerts]);
+  }, [playBeep, onNewAlerts, purgeHistory]);
 
   // Initial scan + periodic refresh
   useEffect(() => {
@@ -226,6 +250,12 @@ export default function IntradayAlerts({ onAnalyze, onNewAlerts }) {
     const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Purge stale signals every minute independently of scan
+  useEffect(() => {
+    const t = setInterval(purgeHistory, 60_000);
+    return () => clearInterval(t);
+  }, [purgeHistory]);
 
   // Request browser notification permission
   useEffect(() => {
@@ -365,6 +395,7 @@ export default function IntradayAlerts({ onAnalyze, onNewAlerts }) {
                   signal={s}
                   onAnalyze={onAnalyze}
                   isNew={false}
+                  showAge
                 />
               ))}
             </div>
