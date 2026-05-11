@@ -280,7 +280,7 @@ export default function App() {
           </aside>
 
           {/* CENTER: Chart */}
-          <main className="flex-1 flex flex-col overflow-hidden border-r border-border">
+          <main className="flex-1 flex flex-col overflow-hidden border-r border-border bg-card">
             {/* Asset header */}
             {data && !loading ? (
               <>
