@@ -717,6 +717,214 @@ function scoreDayTrade(quotes, meta) {
   };
 }
 
+// ── Daily AI Picks ────────────────────────────────────────────────────────────
+
+const DAILY_WATCHLIST = [
+  // High-volatility stocks
+  { symbol: 'NVDA',  name: 'Nvidia',          type: 'stock' },
+  { symbol: 'TSLA',  name: 'Tesla',           type: 'stock' },
+  { symbol: 'AMD',   name: 'AMD',             type: 'stock' },
+  { symbol: 'META',  name: 'Meta',            type: 'stock' },
+  { symbol: 'COIN',  name: 'Coinbase',        type: 'stock' },
+  { symbol: 'MSTR',  name: 'MicroStrategy',   type: 'stock' },
+  { symbol: 'PLTR',  name: 'Palantir',        type: 'stock' },
+  { symbol: 'HOOD',  name: 'Robinhood',       type: 'stock' },
+  // Leveraged ETFs — amplify moves x3
+  { symbol: 'TQQQ',  name: 'Nasdaq 3x Bull',  type: 'etf'   },
+  { symbol: 'SOXL',  name: 'Semi 3x Bull',    type: 'etf'   },
+  { symbol: 'SPXL',  name: 'S&P500 3x Bull',  type: 'etf'   },
+  { symbol: 'LABU',  name: 'Biotech 3x Bull', type: 'etf'   },
+  // Crypto — can move 25%+ in days
+  { symbol: 'BTC-USD', name: 'Bitcoin',   type: 'crypto' },
+  { symbol: 'ETH-USD', name: 'Ethereum',  type: 'crypto' },
+  { symbol: 'SOL-USD', name: 'Solana',    type: 'crypto' },
+  { symbol: 'XRP-USD', name: 'XRP',       type: 'crypto' },
+];
+
+function scoreDailyPick(quotes, meta, symbol) {
+  const closes  = quotes.map(q => q.close);
+  const highs   = quotes.map(q => q.high);
+  const lows    = quotes.map(q => q.low);
+  const volumes = quotes.map(q => q.volume).filter(v => v > 0);
+
+  const cur     = closes[closes.length - 1];
+  const prev    = closes[closes.length - 2];
+  const change24h = ((cur - prev) / prev) * 100;
+
+  const curATR  = atrValue(highs, lows, closes, 14);
+  const atrPct  = (curATR / cur) * 100;
+
+  const rsiVals  = rsi(closes);
+  const curRSI   = rsiVals[rsiVals.length - 1];
+  const prevRSI  = rsiVals[rsiVals.length - 2];
+
+  const macdData = macd(closes);
+  const bbData   = bollingerBands(closes);
+  const curBB    = bbData[bbData.length - 1];
+  const bbPos    = Math.max(0, Math.min(1, (cur - curBB.lower) / (curBB.upper - curBB.lower)));
+
+  const sma20v   = sma(closes, 20);
+  const sma50v   = sma(closes, 50);
+  const curSMA20 = sma20v[sma20v.length - 1];
+  const curSMA50 = sma50v[sma50v.length - 1];
+
+  let score   = 0;
+  const reasons = [];
+
+  // 1. RSI momentum zone (25 pts)
+  if (curRSI >= 52 && curRSI <= 70 && curRSI > prevRSI) {
+    score += 25; reasons.push(`RSI ${curRSI.toFixed(0)} — momentum haussier confirmé`);
+  } else if (curRSI <= 32 && curRSI > prevRSI) {
+    score += 22; reasons.push(`RSI ${curRSI.toFixed(0)} — survente extrême, rebond probable`);
+  } else if (curRSI >= 45 && curRSI <= 75) {
+    score += 14;
+  } else {
+    score += 4;
+  }
+
+  // 2. MACD crossover (30 pts)
+  if (macdData) {
+    const len = macdData.macdLine.length;
+    const cm  = macdData.macdLine[len - 1], cs = macdData.signalLine[len - 1];
+    const pm  = macdData.macdLine[len - 2], ps = macdData.signalLine[len - 2];
+    const hist = macdData.histogram;
+    const histRising = hist[hist.length - 1] > hist[hist.length - 2];
+    if (cm > cs && pm <= ps) {
+      score += 30; reasons.push('Croisement MACD haussier — signal d\'entrée fort');
+    } else if (cm > cs && histRising && cm > 0) {
+      score += 22; reasons.push('MACD haussier et accélère au-dessus de zéro');
+    } else if (cm > cs && histRising) {
+      score += 15; reasons.push('MACD en reprise haussière');
+    } else if (cm > cs) {
+      score += 9;
+    }
+  }
+
+  // 3. Volatility — ATR must be high enough to reach 25% (20 pts)
+  if (atrPct >= 5)   { score += 20; reasons.push(`Volatilité élevée ATR ${atrPct.toFixed(1)}% — idéal pour +25%`); }
+  else if (atrPct >= 3) { score += 15; reasons.push(`Bonne volatilité ATR ${atrPct.toFixed(1)}%`); }
+  else if (atrPct >= 1.5) { score += 8; }
+  else               { score -= 8; } // trop faible pour 25% rapidement
+
+  // 4. Trend alignment SMA 20/50 (15 pts)
+  if (cur > curSMA20 && curSMA20 > curSMA50) {
+    score += 15; reasons.push('Tendances SMA 20/50 parfaitement alignées haussières');
+  } else if (cur > curSMA20) {
+    score += 8;
+  } else if (cur < curSMA20 && curRSI < 35) {
+    score += 5; // rebond contrarian
+  }
+
+  // 5. Volume spike (10 pts)
+  if (volumes.length >= 21) {
+    const avgVol  = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+    const lastVol = volumes[volumes.length - 1];
+    const ratio   = lastVol / avgVol;
+    if (ratio >= 2)   { score += 10; reasons.push(`Volume x${ratio.toFixed(1)} supérieur à la moyenne`); }
+    else if (ratio >= 1.4) { score += 5; }
+  }
+
+  // 6. Recent 3-day momentum (5 pts)
+  const avg3 = closes.slice(-4, -1).reduce((a, b) => a + b, 0) / 3;
+  const mom3 = ((cur - avg3) / avg3) * 100;
+  if (mom3 > 4) { score += 5; reasons.push(`Momentum 3j : +${mom3.toFixed(1)}%`); }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  // Action direction
+  let action = 'BUY';
+  if (macdData) {
+    const len = macdData.macdLine.length;
+    if (macdData.macdLine[len - 1] < macdData.signalLine[len - 1] && curRSI > 68) action = 'SELL';
+  }
+
+  // Target always at +25% from entry (objective of the module)
+  const targetPct = 0.25;
+  const stopPct   = Math.max(0.04, curATR / cur * 1.2);
+  const entryPrice  = cur;
+  const targetPrice = action === 'BUY' ? cur * (1 + targetPct) : cur * (1 - targetPct);
+  const stopLoss    = action === 'BUY' ? cur * (1 - stopPct)   : cur * (1 + stopPct);
+  const riskReward  = (targetPct / stopPct).toFixed(2);
+
+  // Leverage to reach 25% in one session if asset ATR allows it
+  const leverageNeeded = atrPct >= 25 ? 1 : atrPct >= 12 ? 2 : atrPct >= 6 ? 3 : atrPct >= 3 ? 5 : 10;
+
+  // Days estimate to reach 25% without leverage (based on ATR)
+  const daysEstimate = atrPct > 0 ? Math.ceil(targetPct / (atrPct / 100)) : '?';
+
+  return {
+    score,
+    action,
+    confidence:      Math.min(93, Math.round(score * 0.91)),
+    currentPrice:    cur,
+    change24h:       change24h.toFixed(2),
+    atrPct:          atrPct.toFixed(2),
+    entryPrice,
+    targetPrice,
+    stopLoss,
+    riskReward,
+    targetPct:       25,
+    leverageNeeded,
+    daysEstimate,
+    bbPos:           parseFloat((bbPos * 100).toFixed(1)),
+    reasons:         reasons.slice(0, 4),
+    currency:        meta?.currency || 'USD',
+    name:            meta?.longName || meta?.shortName || symbol,
+  };
+}
+
+// Market timing helpers (EST = UTC-5, EDT = UTC-4)
+function getMarketStatus() {
+  const now   = new Date();
+  const utcH  = now.getUTCHours();
+  const utcM  = now.getUTCMinutes();
+  const utcDay = now.getUTCDay(); // 0=Sun, 6=Sat
+  // Use EDT offset (-4) for DST simplification (roughly Mar–Nov)
+  const month = now.getUTCMonth(); // 0-indexed
+  const isDST = month >= 2 && month <= 10;
+  const estOffset = isDST ? -4 : -5;
+  const estTotalMin = (utcH * 60 + utcM + (24 + estOffset) * 60) % (24 * 60);
+  const estH = Math.floor(estTotalMin / 60);
+  const estM = estTotalMin % 60;
+  const estDayAdj = utcDay; // simplified — good enough for ±1 day
+
+  const isWeekend  = estDayAdj === 0 || estDayAdj === 6;
+  const openMin    = 9 * 60 + 30;
+  const closeMin   = 16 * 60;
+  const nowMin     = estH * 60 + estM;
+  const isOpen     = !isWeekend && nowMin >= openMin && nowMin < closeMin;
+  const isPreMkt   = !isWeekend && nowMin < openMin;
+  const isAfterMkt = !isWeekend && nowMin >= closeMin;
+
+  let minutesUntilOpen = null;
+  if (isPreMkt)    minutesUntilOpen = openMin - nowMin;
+  if (isWeekend)   minutesUntilOpen = ((8 - estDayAdj) % 7) * 24 * 60 + openMin - nowMin;
+
+  return { isOpen, isPreMkt, isAfterMkt, isWeekend, minutesUntilOpen, estH, estM };
+}
+
+app.get('/api/daily-picks', async (req, res) => {
+  const DEADLINE = Date.now() + 25_000;
+  const results  = [];
+
+  for (const item of DAILY_WATCHLIST) {
+    if (Date.now() >= DEADLINE) break;
+    try {
+      const result = await fetchChart(item.symbol, '6mo', '1d');
+      const quotes  = parseQuotes(result);
+      if (quotes.length < 40) continue;
+      const pick = scoreDailyPick(quotes, result.meta, item.symbol);
+      if (pick.score < 35) continue; // skip weak setups
+      results.push({ symbol: item.symbol, type: item.type, ...pick });
+    } catch { /* skip */ }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  const picks = results.slice(0, 5);
+
+  res.json({ picks, total: results.length, market: getMarketStatus(), generatedAt: new Date().toISOString() });
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.get('/api/strategies', (req, res) => {
