@@ -4,10 +4,12 @@ import axios from 'axios';
 function fmt(n) {
   if (n == null) return '—';
   const v = Number(n);
-  if (v >= 10000) return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  if (v >= 100)   return v.toFixed(2);
-  if (v >= 1)     return v.toFixed(4);
-  return v.toFixed(6);
+  if (v >= 10000)   return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (v >= 100)     return v.toFixed(2);
+  if (v >= 1)       return v.toFixed(4);
+  if (v >= 0.01)    return v.toFixed(5);
+  if (v >= 0.0001)  return v.toFixed(7);
+  return v.toFixed(10); // SHIB, PEPE, etc.
 }
 
 function Countdown({ minutes }) {
@@ -28,13 +30,14 @@ function MarketBadge({ market }) {
   return <span className="flex items-center gap-1.5 text-gray-500 text-xs font-bold"><span className="w-2 h-2 rounded-full bg-gray-600 inline-block" />APRÈS-BOURSE</span>;
 }
 
-function TypeBadge({ type }) {
+function TypeBadge({ type, price }) {
   const cfg = {
     crypto: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
     etf:    'bg-purple-500/15 text-purple-400 border-purple-500/30',
     stock:  'bg-blue-500/15 text-blue-400 border-blue-500/30',
+    micro:  'bg-pink-500/15 text-pink-400 border-pink-500/30',
   }[type] || 'bg-gray-700 text-gray-400 border-gray-600';
-  const label = { crypto: 'CRYPTO', etf: 'ETF 3x', stock: 'ACTION' }[type] || type.toUpperCase();
+  const label = { crypto: 'CRYPTO', etf: 'ETF 3x', stock: 'ACTION', micro: '< $1' }[type] || type.toUpperCase();
   return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cfg}`}>{label}</span>;
 }
 
@@ -223,7 +226,7 @@ export default function DailyAIPicks({ onAnalyze }) {
             <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             <div className="text-center">
               <p className="text-gray-400 font-semibold">Analyse IA en cours…</p>
-              <p className="text-gray-600 text-sm mt-1">Scan de {16} actifs — peut prendre 20s</p>
+              <p className="text-gray-600 text-sm mt-1">Scan de 24 actifs (stocks, ETF 3x, crypto, micro) — peut prendre 25s</p>
             </div>
           </div>
         )}

@@ -734,11 +734,20 @@ const DAILY_WATCHLIST = [
   { symbol: 'SOXL',  name: 'Semi 3x Bull',    type: 'etf'   },
   { symbol: 'SPXL',  name: 'S&P500 3x Bull',  type: 'etf'   },
   { symbol: 'LABU',  name: 'Biotech 3x Bull', type: 'etf'   },
-  // Crypto — can move 25%+ in days
+  // Crypto > $1
   { symbol: 'BTC-USD', name: 'Bitcoin',   type: 'crypto' },
   { symbol: 'ETH-USD', name: 'Ethereum',  type: 'crypto' },
   { symbol: 'SOL-USD', name: 'Solana',    type: 'crypto' },
   { symbol: 'XRP-USD', name: 'XRP',       type: 'crypto' },
+  // Crypto < $1 — forte volatilité, gains rapides possibles
+  { symbol: 'DOGE-USD', name: 'Dogecoin',   type: 'micro' },
+  { symbol: 'ADA-USD',  name: 'Cardano',    type: 'micro' },
+  { symbol: 'TRX-USD',  name: 'TRON',       type: 'micro' },
+  { symbol: 'XLM-USD',  name: 'Stellar',    type: 'micro' },
+  { symbol: 'HBAR-USD', name: 'Hedera',     type: 'micro' },
+  { symbol: 'ALGO-USD', name: 'Algorand',   type: 'micro' },
+  { symbol: 'VET-USD',  name: 'VeChain',    type: 'micro' },
+  { symbol: 'SHIB-USD', name: 'Shiba Inu',  type: 'micro' },
 ];
 
 function scoreDailyPick(quotes, meta, symbol) {
