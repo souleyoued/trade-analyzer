@@ -5,17 +5,41 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const YF_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Cache-Control': 'no-cache',
-  'Pragma': 'no-cache',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-site',
-};
+const YF_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Yahoo Finance crumb cache — refreshed every 55 min
+const yfAuth = { crumb: null, cookie: '', expiresAt: 0 };
+
+async function getYFAuth() {
+  if (yfAuth.crumb && Date.now() < yfAuth.expiresAt) return yfAuth;
+
+  let cookie = '';
+  for (const url of ['https://fc.yahoo.com/', 'https://finance.yahoo.com/']) {
+    try {
+      const r = await fetch(url, {
+        headers: { 'User-Agent': YF_UA, 'Accept': 'text/html,*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+        redirect: 'follow',
+      });
+      const raw = r.headers.get('set-cookie') || '';
+      const parts = [];
+      for (const seg of raw.split(/,(?=[^ ])/)) {
+        const m = seg.match(/^([^=]+=\S+)/);
+        if (m) parts.push(m[1].split(';')[0]);
+      }
+      if (parts.length) { cookie = parts.join('; '); break; }
+    } catch {}
+  }
+
+  const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+    headers: { 'User-Agent': YF_UA, 'Accept': '*/*', 'Cookie': cookie },
+  });
+  if (!crumbRes.ok) throw new Error(`Crumb fetch failed: ${crumbRes.status}`);
+
+  yfAuth.crumb     = await crumbRes.text();
+  yfAuth.cookie    = cookie;
+  yfAuth.expiresAt = Date.now() + 55 * 60 * 1000;
+  return yfAuth;
+}
 
 // ── Strategy Profiles ─────────────────────────────────────────────────────────
 
@@ -826,8 +850,9 @@ app.get('/api/signal/:symbol', async (req, res) => {
 
 app.get('/api/search/:query', async (req, res) => {
   try {
-    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(req.params.query)}&quotesCount=8&newsCount=0&enableFuzzyQuery=false`;
-    const r   = await fetch(url, { headers: YF_HEADERS });
+    const { crumb, cookie } = await getYFAuth();
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(req.params.query)}&quotesCount=8&newsCount=0&enableFuzzyQuery=false&crumb=${encodeURIComponent(crumb)}`;
+    const r   = await fetch(url, { headers: { 'User-Agent': YF_UA, 'Accept': 'application/json', 'Cookie': cookie } });
     const json = await r.json();
     const quotes = (json?.quotes || [])
       .filter(q => ['EQUITY', 'CRYPTOCURRENCY', 'ETF'].includes(q.quoteType))
@@ -842,8 +867,25 @@ app.get('/api/search/:query', async (req, res) => {
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 
 async function fetchChart(symbol, range = '1y', interval = '1d') {
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}&includePrePost=false`;
-  const res = await fetch(url, { headers: YF_HEADERS });
+  const { crumb, cookie } = await getYFAuth();
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}&includePrePost=false&crumb=${encodeURIComponent(crumb)}`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': YF_UA, 'Accept': 'application/json', 'Cookie': cookie },
+  });
+  if (res.status === 401 || res.status === 403) {
+    // Crumb expired — invalidate and retry once
+    yfAuth.crumb = null;
+    const { crumb: c2, cookie: k2 } = await getYFAuth();
+    const url2 = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}&includePrePost=false&crumb=${encodeURIComponent(c2)}`;
+    const res2 = await fetch(url2, {
+      headers: { 'User-Agent': YF_UA, 'Accept': 'application/json', 'Cookie': k2 },
+    });
+    if (!res2.ok) throw new Error(`Yahoo Finance error: ${res2.status}`);
+    const json2 = await res2.json();
+    const result2 = json2?.chart?.result?.[0];
+    if (!result2) throw new Error('Symbole introuvable');
+    return result2;
+  }
   if (!res.ok) throw new Error(`Yahoo Finance error: ${res.status}`);
   const json = await res.json();
   const result = json?.chart?.result?.[0];
